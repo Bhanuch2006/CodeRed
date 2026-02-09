@@ -54,7 +54,7 @@ function normalizeRoom(room) {
     ...room,
     players: Array.isArray(room.players)
       ? room.players
-      : Array.from(room.players.values()),
+      : Array.from(room.players?.values() || []),
     scores:
       room.scores instanceof Map
         ? Object.fromEntries(room.scores)
@@ -81,7 +81,8 @@ export default function GameLobby() {
     { type: "circle", x: 18, y: 45, duration: 22 },
   ]);
 
-  // Initialize state from location or localStorage
+  // State from location
+  const [roomCode] = useState(location.state?.roomCode);
   const [room, setRoom] = useState(location.state?.room || null);
   const [playerId, setPlayerId] = useState(
     location.state?.playerId || localStorage.getItem("codeRed_playerId"),
@@ -150,10 +151,6 @@ export default function GameLobby() {
       return;
     }
 
-    // Update state if recovered from storage
-    if (!playerId) setPlayerId(pid);
-    if (!playerName) setPlayerName(pname);
-
     if (!socket.connected) {
       socket.connect();
     }
@@ -192,6 +189,7 @@ export default function GameLobby() {
 
     socket.on("playerLeft", ({ playerId: leftPlayerId, room }) => {
       if (room) setRoom(normalizeRoom(room));
+      if (room) setRoom(normalizeRoom(room));
       setChatMessages((prev) => [
         ...prev,
         {
@@ -200,10 +198,6 @@ export default function GameLobby() {
           color: "#ff3366",
         },
       ]);
-    });
-
-    socket.on("chatMessage", (msg) => {
-      setChatMessages((prev) => [...prev, msg]);
     });
 
     socket.on("gameStarted", ({ room }) => {
@@ -217,13 +211,15 @@ export default function GameLobby() {
       });
     });
 
-    socket.on("disconnect", () => {
-      setConnected(false);
-      setError("Disconnected from server");
-    });
-
-    return () => socket.removeAllListeners();
-  }, [navigate, location, playerId, playerName]);
+    return () => {
+      socket.off("connect");
+      socket.off("disconnect");
+      socket.off("roomUpdated");
+      socket.off("playerJoined");
+      socket.off("playerLeft");
+      socket.off("gameStarted");
+    };
+  }, [navigate, roomCode, playerId, playerName]);
 
   /* ---------------- Actions ---------------- */
 
@@ -251,7 +247,14 @@ export default function GameLobby() {
 
   const sendMessage = () => {
     if (!message.trim()) return;
-    socket.emit("chatMessage", { message });
+    
+    const chatMsg = {
+      username: playerName,
+      message: message.trim(),
+      color: me?.color || '#00ddff'
+    };
+
+    setChatMessages((prev) => [...prev, chatMsg]);
     setMessage("");
   };
 
@@ -262,7 +265,23 @@ export default function GameLobby() {
     }
   };
 
-  /* ---------------- UI ---------------- */
+  if (!room) {
+    return (
+      <div style={{ 
+        minHeight: '100vh', 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'center',
+        background: '#0a0e1a',
+        color: '#fff',
+        fontFamily: '"Press Start 2P", monospace'
+      }}>
+        Loading lobby...
+      </div>
+    );
+  }
+
+  /* ---------------- Render ---------------- */
 
   return (
     <div className="game-lobby">
@@ -283,6 +302,7 @@ export default function GameLobby() {
         </div>
       ))}
 
+      {/* Error Banner */}
       {error && (
         <div className="error-banner">
           <AlertCircle size={20} />
@@ -291,6 +311,7 @@ export default function GameLobby() {
         </div>
       )}
 
+      {/* Header */}
       <header className="lobby-header">
         <div className="logo">
           <span className="dev">CODE</span>
@@ -329,7 +350,9 @@ export default function GameLobby() {
         </div>
       </header>
 
+      {/* Main Container */}
       <div className="lobby-container">
+        {/* Players Panel */}
         <div className="players-panel">
           <div className="panel-header">
             <h2>
@@ -339,6 +362,7 @@ export default function GameLobby() {
               {readyCount}/{players.length}
             </span>
           </div>
+
           <div className="players-list">
             {players.map((player) => (
               <div
@@ -368,11 +392,21 @@ export default function GameLobby() {
                 ></div>
               </div>
             ))}
+
+            {/* Empty slots */}
+            {Array.from({ length: Math.max(0, 3 - players.length) }).map((_, idx) => (
+              <div key={`empty-${idx}`} className="waiting-indicator">
+                <div className="waiting-avatar"></div>
+                <span>Waiting for player...</span>
+              </div>
+            ))}
           </div>
+
           {playerId && (
             <button
               className={`ready-btn ${me?.isReady ? "ready" : "not-ready"}`}
               onClick={handleToggleReady}
+              disabled={readyLoading}
             >
               {readyLoading
                 ? "UPDATING..."
@@ -383,6 +417,7 @@ export default function GameLobby() {
           )}
         </div>
 
+        {/* Lobby Panel */}
         <div className="lobby-panel">
           <div className="lobby-title-section">
             <h1 className="lobby-title">LOBBY</h1>
@@ -416,7 +451,7 @@ export default function GameLobby() {
 
           <div className="game-settings">
             <div className="settings-header">
-              <span className="cursor-icon">🖱️</span>
+              <span className="cursor-icon">⚙️</span>
               <h3>GAME SETTINGS</h3>
             </div>
             <div className="settings-row">
@@ -424,16 +459,18 @@ export default function GameLobby() {
                 <span className="setting-label">MAX PLAYERS</span>
                 <div className="setting-value">
                   <span className="setting-icon">👥</span>
-                  <span>8</span>
+                  <span>6</span>
                 </div>
               </div>
               <div className="setting">
-                <span className="setting-label">GAME MODE</span>
-                <div className="setting-value mode-classic">CLASSIC</div>
+                <span className="setting-label">ROUNDS</span>
+                <div className="setting-value mode-classic">
+                  <span>{room.totalRounds}</span>
+                </div>
               </div>
               <div className="setting">
-                <span className="setting-label">DIFFICULTY</span>
-                <div className="setting-value mode-medium">MEDIUM</div>
+                <span className="setting-label">TIME/ROUND</span>
+                <div className="setting-value mode-medium">90s</div>
               </div>
             </div>
           </div>
@@ -470,8 +507,9 @@ export default function GameLobby() {
         </div>
       </div>
 
+      {/* Styles */}
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
 
         * {
           margin: 0;
@@ -483,7 +521,7 @@ export default function GameLobby() {
           min-height: 100vh;
           background: radial-gradient(ellipse at center, #1a1d3a 0%, #0a0d1f 70%, #000000 100%);
           color: #fff;
-          font-family: '"Press Start 2P", "Courier New", monospace';
+          font-family: 'Press Start 2P', 'Courier New', monospace;
           position: relative;
           overflow: hidden;
         }
