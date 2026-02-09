@@ -1,4 +1,4 @@
-# CodeRed - Bug Hunting Game 🐛🔴
+# CodeRed
 
 A real-time multiplayer game where players compete to find and fix bugs in code!
 
@@ -130,18 +130,3 @@ CodeRed/
 ├── .gitignore
 └── README.md
 ```
-
-## Development
-
-### Adding New Features
-- Code samples: Edit `server/gameState.js`
-- UI components: Add to `client/src/components/`
-- Game logic: Modify `server/socketHandlers.js`
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-## License
-
-MIT License

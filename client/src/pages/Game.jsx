@@ -1,11 +1,8 @@
-// Game page
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import socket from '../socket';
 import CodeEditor from '../components/CodeEditor';
-import Timer from '../components/Timer';
-import Buzzer from '../components/Buzzer';
-import PlayerList from '../components/PlayerList';
+import { Bell, LogOut } from 'lucide-react';
 
 function Game() {
   const navigate = useNavigate();
@@ -26,7 +23,6 @@ function Game() {
       return;
     }
 
-    // Set initial code
     if (room.currentCode) {
       if (getCurrentPlayer()?.role === 'bugger') {
         setCode(room.currentCode.currentBug.buggedCode);
@@ -35,7 +31,6 @@ function Game() {
       }
     }
 
-    // Socket event listeners
     socket.on('timerUpdate', ({ remaining }) => {
       setTimeRemaining(remaining);
     });
@@ -43,7 +38,6 @@ function Game() {
     socket.on('playerBuzzed', ({ playerId: buzzerId, playerName }) => {
       setBuzzedPlayerName(playerName);
       
-      // If current player buzzed, show fix modal
       if (buzzerId === playerId) {
         setShowFixModal(true);
         setFixedCode(code);
@@ -139,16 +133,42 @@ function Game() {
   const handleCodeChange = (newCode) => {
     setCode(newCode);
     
-    // If bugger, emit code update
     if (getCurrentPlayer()?.role === 'bugger') {
       socket.emit('submitBug', { buggedCode: newCode });
     }
   };
 
+  const handleLeaveRoom = () => {
+    if (window.confirm('Are you sure you want to leave the game?')) {
+      socket.disconnect();
+      navigate('/');
+    }
+  };
+
+  const formatTime = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  };
+
   if (!room) {
     return (
-      <div style={styles.container}>
-        <div style={styles.loading}>Loading game...</div>
+      <div className="game-container">
+        <div className="loading">Loading game...</div>
+        <style jsx>{`
+          .game-container {
+            min-height: 100vh;
+            background: #0a0e27;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+          }
+          .loading {
+            color: #00ff88;
+            font-size: 20px;
+            font-family: 'Share Tech Mono', monospace;
+          }
+        `}</style>
       </div>
     );
   }
@@ -157,332 +177,619 @@ function Game() {
   const isBugger = currentPlayer?.role === 'bugger';
   const canBuzz = !isBugger && !buzzedPlayerName;
 
+  const bugsList = room.currentCode?.currentBug ? [
+    { id: 1, title: 'Off-by-one error', location: 'calculateTotal loop' },
+    { id: 2, title: 'Missing async/await', location: 'fetchUserData' },
+    { id: 3, title: 'No input sanitization', location: 'sanitizeInput' },
+    { id: 4, title: 'Potential prototype pollution', location: 'mergeObjects' }
+  ] : [];
+
+  const playerColors = ['#00ddff', '#00ff88', '#dd00ff', '#ffcc00'];
+
   return (
-    <div style={styles.container}>
-      <div style={styles.content}>
-        <div style={styles.header}>
-          <div style={styles.headerLeft}>
-            <h1 style={styles.title}>🔴 CodeRed</h1>
-            <div style={styles.roundInfo}>
-              Round {room.currentRound} / {room.totalRounds}
-            </div>
-          </div>
-          <Timer duration={90} />
+    <div className="game-container">
+      <div className="top-bar">
+        <div className="left">
+          <span className="title">CODERED</span>
+          <span className="status">● ONLINE</span>
         </div>
-
-        <div style={styles.main}>
-          <div style={styles.leftPanel}>
-            <PlayerList
-              players={room.players}
-              hostId={room.hostId}
-              currentPlayerId={playerId}
-              scores={room.scores}
-              showRoles={true}
-            />
-
-            <div style={styles.roleCard}>
-              <h3 style={styles.roleTitle}>Your Role</h3>
-              <div style={styles.roleContent}>
-                {isBugger ? (
-                  <>
-                    <span style={styles.roleIcon}>🐛</span>
-                    <div>
-                      <div style={styles.roleName}>Bugger</div>
-                      <div style={styles.roleDescription}>
-                        Introduce subtle bugs in the code without getting caught!
-                      </div>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <span style={styles.roleIcon}>🔍</span>
-                    <div>
-                      <div style={styles.roleName}>Debugger</div>
-                      <div style={styles.roleDescription}>
-                        Find and fix bugs before time runs out!
-                      </div>
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-
-            {!isBugger && (
-              <Buzzer
-                onBuzz={handleBuzz}
-                disabled={!canBuzz}
-                buzzedPlayer={buzzedPlayerName}
-              />
-            )}
-          </div>
-
-          <div style={styles.rightPanel}>
-            {room.currentCode && (
-              <div style={styles.codeSection}>
-                <div style={styles.codeHeader}>
-                  <h2 style={styles.codeTitle}>{room.currentCode.title}</h2>
-                </div>
-                <CodeEditor
-                  code={code}
-                  onChange={handleCodeChange}
-                  readOnly={!isBugger && !showFixModal}
-                  language={room.currentCode.language}
-                  height="500px"
-                />
-              </div>
-            )}
-
-            {feedback && (
-              <div
-                style={{
-                  ...styles.feedback,
-                  ...(feedback.isCorrect
-                    ? styles.feedbackSuccess
-                    : styles.feedbackError)
-                }}
-              >
-                <div style={styles.feedbackTitle}>
-                  {feedback.isCorrect ? '✅ Correct Fix!' : '❌ Incorrect Fix'}
-                </div>
-                <div style={styles.feedbackText}>
-                  <strong>Bug:</strong> {feedback.bugDescription}
-                </div>
-              </div>
-            )}
-          </div>
+        <div className="right">
+          <span className="room-code">ROOM: #{roomCode}</span>
+          <span className="role-badge">{isBugger ? 'BUGGER' : 'DEVELOPER'}</span>
         </div>
-
-        {/* Fix Modal */}
-        {showFixModal && (
-          <div style={styles.modal}>
-            <div style={styles.modalContent}>
-              <h2 style={styles.modalTitle}>Submit Your Fix</h2>
-              <p style={styles.modalDescription}>
-                Edit the code below to fix the bug you found:
-              </p>
-              <CodeEditor
-                code={fixedCode}
-                onChange={setFixedCode}
-                language={room.currentCode.language}
-                height="400px"
-              />
-              <div style={styles.modalActions}>
-                <button onClick={handleSubmitFix} style={styles.submitButton}>
-                  Submit Fix
-                </button>
-                <button
-                  onClick={() => setShowFixModal(false)}
-                  style={styles.cancelButton}
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
+
+      <div className="game-header">
+        <div className="timer-display">
+          <span className="timer-icon">⏱</span>
+          <span className="timer-text">{formatTime(timeRemaining)}</span>
+        </div>
+
+        <div className="header-right">
+          <div className="players-display">
+            {room.players.slice(0, 4).map((player, idx) => (
+              <div
+                key={player.id}
+                className="player-dot"
+                style={{ backgroundColor: playerColors[idx] }}
+                title={player.name}
+              />
+            ))}
+          </div>
+
+          <div className="bugs-counter">
+            <span className="bug-emoji">🐛</span>
+            <span className="count">{bugsList.length}</span>
+            <span className="label">BUGS</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="main-content">
+        <div className="left-panel">
+          <div className="bugs-panel">
+            <div className="panel-header">
+              <span className="icon">🐛</span>
+              <span>BUGS TO REMOVE</span>
+            </div>
+            <div className="bugs-list">
+              {bugsList.map(bug => (
+                <div key={bug.id} className="bug-item">
+                  <span className="bug-icon">🐛</span>
+                  <div className="bug-info">
+                    <div className="bug-title">{bug.title}</div>
+                    <div className="bug-location">in {bug.location}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {isBugger && (
+            <div className="tools-panel">
+              <div className="panel-header purple">
+                <span className="icon">🔧</span>
+                <span>DEVELOPER TOOLS</span>
+              </div>
+              <div className="tools-content">
+                <p className="tools-text">You have ONE chance to reveal a bug:</p>
+                <button className="reveal-btn">
+                  <span className="icon">👁</span>
+                  REVEAL BUG
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="center-panel">
+          <div className="code-editor-container">
+            {room.currentCode && (
+              <CodeEditor
+                code={code}
+                onChange={handleCodeChange}
+                readOnly={!isBugger && !showFixModal}
+                language={room.currentCode.language}
+                height="calc(100vh - 180px)"
+              />
+            )}
+          </div>
+        </div>
+      </div>
+
+      {!isBugger && (
+        <div className="buzzer-section">
+          <button
+            className={`buzzer-button ${!canBuzz ? 'disabled' : ''}`}
+            onClick={handleBuzz}
+            disabled={!canBuzz}
+          >
+            <Bell size={40} />
+          </button>
+          <div className="buzzer-text">
+            {buzzedPlayerName 
+              ? `${buzzedPlayerName} is fixing...` 
+              : 'Press to pause & start voting'}
+          </div>
+          <button className="leave-btn" onClick={handleLeaveRoom}>
+            <LogOut size={18} />
+            LEAVE ROOM
+          </button>
+        </div>
+      )}
+
+      {showFixModal && (
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <h2>Submit Your Fix</h2>
+            <p>Edit the code below to fix the bug you found:</p>
+            <CodeEditor
+              code={fixedCode}
+              onChange={setFixedCode}
+              language={room.currentCode.language}
+              height="400px"
+            />
+            <div className="modal-actions">
+              <button onClick={handleSubmitFix} className="submit-btn">
+                Submit Fix
+              </button>
+              <button onClick={() => setShowFixModal(false)} className="cancel-btn">
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {feedback && (
+        <div className={`feedback ${feedback.isCorrect ? 'success' : 'error'}`}>
+          <div className="feedback-title">
+            {feedback.isCorrect ? '✅ Correct Fix!' : '❌ Incorrect Fix'}
+          </div>
+          <div className="feedback-text">
+            <strong>Bug:</strong> {feedback.bugDescription}
+          </div>
+        </div>
+      )}
+
+      <style jsx>{`
+        @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
+
+        .game-container {
+          min-height: 100vh;
+          background: linear-gradient(135deg, #0a0e27 0%, #1a1f3a 100%);
+          color: #00ff88;
+          font-family: 'Share Tech Mono', monospace;
+          position: relative;
+          overflow: hidden;
+        }
+
+        .top-bar {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 15px 30px;
+          border-bottom: 2px solid #00ff88;
+          background: rgba(0, 255, 136, 0.05);
+        }
+
+        .top-bar .left {
+          display: flex;
+          align-items: center;
+          gap: 15px;
+        }
+
+        .top-bar .title {
+          font-size: 20px;
+          font-weight: bold;
+          letter-spacing: 2px;
+          color: #00ff88;
+          text-shadow: 0 0 10px #00ff88;
+        }
+
+        .top-bar .status {
+          font-size: 12px;
+          color: #00ff88;
+        }
+
+        .top-bar .right {
+          display: flex;
+          align-items: center;
+          gap: 15px;
+        }
+
+        .top-bar .room-code {
+          font-size: 14px;
+          color: #999;
+        }
+
+        .top-bar .role-badge {
+          background: #00ff88;
+          color: #0a0e27;
+          padding: 5px 15px;
+          border-radius: 3px;
+          font-size: 12px;
+          font-weight: bold;
+        }
+
+        .game-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 15px 20px;
+          gap: 20px;
+        }
+
+        .header-right {
+          display: flex;
+          align-items: center;
+          gap: 15px;
+        }
+
+        .main-content {
+          display: grid;
+          grid-template-columns: 280px 1fr;
+          gap: 20px;
+          padding: 20px;
+          height: calc(100vh - 140px);
+        }
+
+        .left-panel {
+          display: flex;
+          flex-direction: column;
+          gap: 20px;
+        }
+
+        .bugs-panel, .tools-panel {
+          border: 2px solid #00ff88;
+          border-radius: 8px;
+          background: rgba(0, 255, 136, 0.05);
+          overflow: hidden;
+        }
+
+        .tools-panel {
+          border-color: #dd00ff;
+          background: rgba(221, 0, 255, 0.05);
+        }
+
+        .panel-header {
+          background: rgba(0, 255, 136, 0.1);
+          padding: 12px 15px;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          border-bottom: 2px solid #00ff88;
+          font-size: 12px;
+          font-weight: bold;
+          letter-spacing: 1px;
+        }
+
+        .panel-header.purple {
+          background: rgba(221, 0, 255, 0.1);
+          border-bottom-color: #dd00ff;
+          color: #dd00ff;
+        }
+
+        .panel-header .icon {
+          font-size: 16px;
+        }
+
+        .bugs-list {
+          padding: 15px;
+          display: flex;
+          flex-direction: column;
+          gap: 15px;
+        }
+
+        .bug-item {
+          display: flex;
+          gap: 10px;
+          align-items: flex-start;
+        }
+
+        .bug-icon {
+          font-size: 20px;
+          flex-shrink: 0;
+        }
+
+        .bug-info {
+          flex: 1;
+        }
+
+        .bug-title {
+          color: #00ff88;
+          font-size: 11px;
+          line-height: 1.4;
+          margin-bottom: 3px;
+        }
+
+        .bug-location {
+          color: #666;
+          font-size: 10px;
+        }
+
+        .tools-content {
+          padding: 15px;
+        }
+
+        .tools-text {
+          color: #999;
+          font-size: 11px;
+          margin-bottom: 15px;
+          line-height: 1.5;
+        }
+
+        .reveal-btn {
+          width: 100%;
+          background: rgba(221, 0, 255, 0.2);
+          border: 2px solid #dd00ff;
+          color: #dd00ff;
+          padding: 12px;
+          border-radius: 5px;
+          font-family: 'Share Tech Mono', monospace;
+          font-size: 12px;
+          font-weight: bold;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          transition: all 0.3s ease;
+        }
+
+        .reveal-btn:hover {
+          background: rgba(221, 0, 255, 0.3);
+          box-shadow: 0 0 20px rgba(221, 0, 255, 0.5);
+        }
+
+        .center-panel {
+          display: flex;
+          flex-direction: column;
+          gap: 15px;
+        }
+
+        .timer-display {
+          border: 2px solid #00ddff;
+          border-radius: 8px;
+          padding: 10px 25px;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          background: rgba(0, 221, 255, 0.05);
+        }
+
+        .timer-icon {
+          font-size: 20px;
+        }
+
+        .timer-text {
+          font-size: 24px;
+          font-weight: bold;
+          color: #00ddff;
+          letter-spacing: 2px;
+        }
+
+        .code-editor-container {
+          flex: 1;
+          border: 2px solid #00ff88;
+          border-radius: 8px;
+          overflow: hidden;
+          background: #1e1e1e;
+        }
+
+        .players-display {
+          display: flex;
+          gap: 8px;
+        }
+
+        .player-dot {
+          width: 32px;
+          height: 32px;
+          border-radius: 50%;
+          border: 2px solid rgba(255, 255, 255, 0.3);
+          box-shadow: 0 0 10px currentColor;
+        }
+
+        .bugs-counter {
+          border: 2px solid #ffcc00;
+          border-radius: 8px;
+          padding: 8px 20px;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          background: rgba(255, 204, 0, 0.05);
+        }
+
+        .bugs-counter .bug-emoji {
+          font-size: 20px;
+        }
+
+        .bugs-counter .count {
+          font-size: 20px;
+          font-weight: bold;
+          color: #ffcc00;
+        }
+
+        .bugs-counter .label {
+          font-size: 12px;
+          color: #ffcc00;
+          letter-spacing: 1px;
+        }
+
+        .buzzer-section {
+          position: fixed;
+          bottom: 30px;
+          left: 30px;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 15px;
+          z-index: 100;
+        }
+
+        .buzzer-button {
+          width: 120px;
+          height: 120px;
+          border-radius: 50%;
+          border: 4px solid #ff3366;
+          background: radial-gradient(circle, #ff6b6b 0%, #ff3366 50%, #cc0033 100%);
+          color: white;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: all 0.3s ease;
+          box-shadow: 0 0 40px rgba(255, 51, 102, 0.6),
+                      inset 0 0 20px rgba(255, 255, 255, 0.2);
+        }
+
+        .buzzer-button:hover:not(.disabled) {
+          transform: scale(1.05);
+          box-shadow: 0 0 50px rgba(255, 51, 102, 0.8),
+                      inset 0 0 25px rgba(255, 255, 255, 0.3);
+        }
+
+        .buzzer-button:active:not(.disabled) {
+          transform: scale(0.95);
+        }
+
+        .buzzer-button.disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+          background: #666;
+          border-color: #444;
+          box-shadow: none;
+        }
+
+        .buzzer-text {
+          color: #999;
+          font-size: 11px;
+          text-align: center;
+          max-width: 150px;
+        }
+
+        .leave-btn {
+          background: transparent;
+          border: 2px solid #ff3366;
+          color: #ff3366;
+          padding: 10px 20px;
+          border-radius: 5px;
+          font-family: 'Share Tech Mono', monospace;
+          font-size: 11px;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          transition: all 0.3s ease;
+        }
+
+        .leave-btn:hover {
+          background: rgba(255, 51, 102, 0.1);
+          box-shadow: 0 0 15px rgba(255, 51, 102, 0.5);
+        }
+
+        .modal-overlay {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: rgba(0, 0, 0, 0.9);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 1000;
+          padding: 20px;
+        }
+
+        .modal-content {
+          background: #1a1f3a;
+          border: 2px solid #00ff88;
+          border-radius: 8px;
+          padding: 30px;
+          max-width: 800px;
+          width: 100%;
+          max-height: 90vh;
+          overflow: auto;
+        }
+
+        .modal-content h2 {
+          color: #00ff88;
+          font-size: 24px;
+          margin-bottom: 10px;
+        }
+
+        .modal-content p {
+          color: #999;
+          font-size: 14px;
+          margin-bottom: 20px;
+        }
+
+        .modal-actions {
+          display: flex;
+          gap: 15px;
+          margin-top: 20px;
+        }
+
+        .submit-btn, .cancel-btn {
+          flex: 1;
+          padding: 15px;
+          border-radius: 5px;
+          font-family: 'Share Tech Mono', monospace;
+          font-size: 14px;
+          font-weight: bold;
+          cursor: pointer;
+          transition: all 0.3s ease;
+        }
+
+        .submit-btn {
+          background: #00ff88;
+          border: none;
+          color: #0a0e27;
+        }
+
+        .submit-btn:hover {
+          box-shadow: 0 0 20px rgba(0, 255, 136, 0.5);
+        }
+
+        .cancel-btn {
+          background: transparent;
+          border: 2px solid #666;
+          color: #999;
+        }
+
+        .cancel-btn:hover {
+          border-color: #00ff88;
+          color: #00ff88;
+        }
+
+        .feedback {
+          position: fixed;
+          top: 80px;
+          right: 220px;
+          padding: 20px;
+          border-radius: 8px;
+          max-width: 350px;
+          z-index: 200;
+          animation: slideIn 0.3s ease;
+        }
+
+        .feedback.success {
+          background: rgba(0, 255, 136, 0.1);
+          border: 2px solid #00ff88;
+          color: #00ff88;
+        }
+
+        .feedback.error {
+          background: rgba(255, 51, 102, 0.1);
+          border: 2px solid #ff3366;
+          color: #ff3366;
+        }
+
+        .feedback-title {
+          font-size: 16px;
+          font-weight: bold;
+          margin-bottom: 10px;
+        }
+
+        .feedback-text {
+          font-size: 12px;
+          color: #999;
+        }
+
+        @keyframes slideIn {
+          from {
+            transform: translateX(100%);
+            opacity: 0;
+          }
+          to {
+            transform: translateX(0);
+            opacity: 1;
+          }
+        }
+      `}</style>
     </div>
   );
-}
-
-const styles = {
-  container: {
-    minHeight: '100vh',
-    padding: '20px',
-    overflow: 'auto'
-  },
-  content: {
-    maxWidth: '1400px',
-    margin: '0 auto'
-  },
-  header: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: '24px',
-    flexWrap: 'wrap',
-    gap: '20px'
-  },
-  headerLeft: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '16px'
-  },
-  title: {
-    fontSize: '32px',
-    fontWeight: 'bold',
-    color: 'white',
-    textShadow: '2px 2px 4px rgba(0, 0, 0, 0.2)'
-  },
-  roundInfo: {
-    padding: '8px 16px',
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
-    borderRadius: '20px',
-    fontSize: '16px',
-    fontWeight: '600',
-    color: '#667eea'
-  },
-  main: {
-    display: 'grid',
-    gridTemplateColumns: '350px 1fr',
-    gap: '24px',
-    alignItems: 'start'
-  },
-  leftPanel: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '20px',
-    position: 'sticky',
-    top: '20px'
-  },
-  rightPanel: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '20px'
-  },
-  roleCard: {
-    backgroundColor: 'white',
-    borderRadius: '12px',
-    padding: '20px',
-    boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)'
-  },
-  roleTitle: {
-    fontSize: '18px',
-    fontWeight: 'bold',
-    marginBottom: '12px',
-    color: '#1f2937'
-  },
-  roleContent: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '12px'
-  },
-  roleIcon: {
-    fontSize: '48px'
-  },
-  roleName: {
-    fontSize: '20px',
-    fontWeight: 'bold',
-    color: '#1f2937',
-    marginBottom: '4px'
-  },
-  roleDescription: {
-    fontSize: '14px',
-    color: '#6b7280'
-  },
-  codeSection: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '12px'
-  },
-  codeHeader: {
-    backgroundColor: 'white',
-    padding: '16px 20px',
-    borderRadius: '12px 12px 0 0',
-    boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)'
-  },
-  codeTitle: {
-    fontSize: '20px',
-    fontWeight: 'bold',
-    color: '#1f2937'
-  },
-  feedback: {
-    padding: '20px',
-    borderRadius: '12px',
-    boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)'
-  },
-  feedbackSuccess: {
-    backgroundColor: '#d1fae5',
-    border: '2px solid #10b981'
-  },
-  feedbackError: {
-    backgroundColor: '#fee2e2',
-    border: '2px solid #ef4444'
-  },
-  feedbackTitle: {
-    fontSize: '18px',
-    fontWeight: 'bold',
-    marginBottom: '8px'
-  },
-  feedbackText: {
-    fontSize: '14px',
-    color: '#374151'
-  },
-  modal: {
-    position: 'fixed',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    display: 'flex',
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 1000,
-    padding: '20px'
-  },
-  modalContent: {
-    backgroundColor: 'white',
-    borderRadius: '16px',
-    padding: '32px',
-    maxWidth: '800px',
-    width: '100%',
-    maxHeight: '90vh',
-    overflow: 'auto'
-  },
-  modalTitle: {
-    fontSize: '24px',
-    fontWeight: 'bold',
-    marginBottom: '12px',
-    color: '#1f2937'
-  },
-  modalDescription: {
-    fontSize: '16px',
-    color: '#6b7280',
-    marginBottom: '20px'
-  },
-  modalActions: {
-    display: 'flex',
-    gap: '12px',
-    marginTop: '20px'
-  },
-  submitButton: {
-    flex: 1,
-    padding: '14px',
-    fontSize: '16px',
-    fontWeight: '600',
-    color: 'white',
-    background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-    border: 'none',
-    borderRadius: '8px',
-    cursor: 'pointer'
-  },
-  cancelButton: {
-    flex: 1,
-    padding: '14px',
-    fontSize: '16px',
-    fontWeight: '600',
-    color: '#6b7280',
-    backgroundColor: '#f3f4f6',
-    border: 'none',
-    borderRadius: '8px',
-    cursor: 'pointer'
-  },
-  loading: {
-    color: 'white',
-    fontSize: '20px',
-    textAlign: 'center',
-    marginTop: '100px'
-  }
-};
-
-// Add media query for responsive layout
-if (typeof window !== 'undefined') {
-  const mediaQuery = window.matchMedia('(max-width: 1024px)');
-  if (mediaQuery.matches) {
-    styles.main.gridTemplateColumns = '1fr';
-    styles.leftPanel.position = 'static';
-  }
 }
 
 export default Game;
